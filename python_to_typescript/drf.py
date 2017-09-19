@@ -4,6 +4,7 @@ from typing import Dict, List, Optional, Set
 
 import six
 from rest_framework.serializers import (
+    Serializer,
     BooleanField,
     CharField,
     ChoiceField,
@@ -89,5 +90,37 @@ def generate_interfaces_from_serializer(serializer_class):
     for field_name, field in six.iteritems(serializer.fields):
         if not field.write_only:
             attribute_dict[field_name] = _python_type_for_field(field)
+
+    return generate_interfaces(python_types)
+
+
+def generate_interfaces_from_serializers(serializer_classes, follow_dependencies=True):
+    classes_todo = set(serializer_classes)
+    classes_done = set()
+    python_types = []
+
+    while len(classes_todo) > 0:
+        serializer_class = classes_todo.pop()
+        serializer = serializer_class()
+        attribute_dict = {}
+
+        for field_name, field in six.iteritems(serializer.fields):
+            if not field.write_only:
+                if isinstance(field, Serializer):
+                    field_class = type(field)
+
+                    if field_class in classes_todo or field_class in classes_done or field_class is serializer_class:
+                        attribute_dict[field_name] = _serializer_name(field_class) + (' | null' if field.allow_null else '')
+                    elif follow_dependencies:
+                        classes_todo.add(field_class)
+                        attribute_dict[field_name] =  _serializer_name(field_class) + (' | null' if field.allow_null else '')
+                    else:
+                        attribute_dict[field_name] = _python_type_for_field(field)
+
+                else:
+                    attribute_dict[field_name] = _python_type_for_field(field)
+
+        python_types.append((_serializer_name(serializer_class), attribute_dict))
+        classes_done.add(serializer_class)
 
     return generate_interfaces(python_types)
